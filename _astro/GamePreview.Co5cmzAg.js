@@ -1,0 +1,1 @@
+import{j as e}from"./jsx-runtime.u17CrQMm.js";import"./index.C9UIE09A.js";import{C as n,A as r,T as a,M as c,W as i}from"./ConnectPath.CbBPQDd2.js";const m={"word-hunt":i,"memory-match":c,"tic-tac-toe":a,"art-of-moving":r,"connect-the-path":n};function h({game:o}){const t=m[o];return t?e.jsx(t,{open:!0,onClose:()=>{window.location.href="/"}}):null}export{m as GAMES,h as default};
