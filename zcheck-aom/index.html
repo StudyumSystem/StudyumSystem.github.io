@@ -1,0 +1,125 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-kiwb5gmy> <head><meta charset="utf-8"><meta name="robots" content="noindex"><style>body{margin:0;padding:8px;font:11px/1.2 monospace;background:#fff}#grid[data-astro-cid-kiwb5gmy]{display:flex;flex-wrap:wrap;gap:3px}.cell[data-astro-cid-kiwb5gmy]{position:relative;border:1px solid #ccc}.cell[data-astro-cid-kiwb5gmy] span[data-astro-cid-kiwb5gmy]{position:absolute;left:1px;top:1px;background:#ffe;font-size:12px;padding:0 2px}pre[data-astro-cid-kiwb5gmy]{font-size:11px;margin:0 0 6px;-moz-columns:2;columns:2}
+</style></head> <body data-astro-cid-kiwb5gmy> <pre id="info" data-astro-cid-kiwb5gmy>loading…</pre> <div id="grid" data-astro-cid-kiwb5gmy></div> <script>
+      const q = new URLSearchParams(location.search);
+      const clip = q.get("clip") || "walk";
+      const SRC = { walk: "/assets/human-walking.mp4", jump: "/assets/games/jump.mp4", stumble: "/assets/games/stumble.mp4" }[clip];
+      const from = Number(q.get("from") || 0), to = Number(q.get("to") || 99), every = Number(q.get("every") || 0.1);
+      const TH = Number(q.get("th") || 150);
+      const DARK = Number(q.get("dark") || 128);
+      const K = Number(q.get("k") || 4);
+      const RATE = Number(q.get("rate") || 4);
+      const info = document.getElementById("info");
+      const grid = document.getElementById("grid");
+      const log = [];
+      let lastT = -1;
+      // keep the network busy until the measuring is done, so the checker waits for it
+      let busy = true, nb = 0;
+      const ping = () => { if (!busy || nb > 120) return; nb++; fetch(`/robots.txt?busy=${nb}`, { cache: "no-store" }).catch(() => {}).finally(() => setTimeout(ping, 250)); };
+      ping();
+      new MutationObserver(() => { if (/\ndone|\nerror/.test(info.textContent)) busy = false; }).observe(info, { childList: true, characterData: true, subtree: true });
+      const measure = (v, t, c, x, W, H) => {
+        x.drawImage(v, 0, 0, W, H);
+        const d = x.getImageData(0, 0, W, H).data;
+        const ex = Math.round(W * 0.02), ey = Math.round(H * 0.015);
+        const lum = (xx, y) => { const i = (y * W + xx) * 4; return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; };
+        let top = -1, sole = -1, l = W, r = -1;
+        for (let y = ey; y < H - ey; y++) {
+          let n = 0;
+          for (let xx = ex; xx < W - ex; xx++) if (lum(xx, y) < DARK) { n++; if (xx < l) l = xx; if (xx > r) r = xx; }
+          if (n >= 2) { if (top < 0) top = y; sole = y; }
+        }
+        let fl = W, fr = -1;
+        for (let y = Math.max(0, sole - Math.round(H * 0.05)); y <= sole; y++) for (let xx = ex; xx < W - ex; xx++) if (lum(xx, y) < DARK) { if (xx < fl) fl = xx; if (xx > fr) fr = xx; }
+        let sx = 0, sn = 0;
+        for (let y = Math.round(top + (sole - top) * 0.2); y <= top + (sole - top) * 0.4; y++) for (let xx = ex; xx < W - ex; xx++) if (lum(xx, y) < DARK) { sx += xx; sn++; }
+        const tc = sn ? sx / sn : -1;
+        // head size: going down from the top, the dark run under the head widens (skull), narrows (neck), then the
+        // collar; the widest run before the neck is the head's length in profile
+        let hc = -1, hw = 0, hy = -1, narrow = 0;
+        for (let y = top; y < top + H * 0.14 && y < H; y++) {
+          let best = null;
+          let xx = ex;
+          while (xx < W - ex) {
+            if (lum(xx, y) < DARK) {
+              let e = xx;
+              while (e + 1 < W - ex && lum(e + 1, y) < DARK) e++;
+              const mid = (xx + e) / 2;
+              if (hc < 0 || (xx <= hc + 2 && e >= hc - 2)) { if (!best || e - xx > best[1] - best[0]) best = [xx, e]; }
+              xx = e + 1;
+            } else xx++;
+          }
+          if (!best) continue;
+          const w = best[1] - best[0] + 1;
+          if (hc < 0) hc = (best[0] + best[1]) / 2;
+          if (w > hw * 1.6 && hw > 4) break; // collar
+          if (w >= hw) { hw = w; hy = y; narrow = 0; } else if (w < hw * 0.8) { narrow++; if (narrow > 2) break; }
+          hc = (best[0] + best[1]) / 2;
+        }
+        const P = (y) => ((y / H) * 100).toFixed(1);
+        const PX = (xx) => ((xx / W) * 100).toFixed(0);
+        log.push(`t ${t.toFixed(2)} top ${P(top)} sole ${P(sole)} body ${P(sole - top)} x ${PX(l)}-${PX(r)} feet ${PX(fl)}-${PX(fr)} torso ${((tc / W) * 100).toFixed(1)} head ${((hw / H) * 100).toFixed(2)}@${P(hy)}`);
+        const cy0 = Number(q.get("cy0") || 0), cy1 = Number(q.get("cy1") || 1), cx0 = Number(q.get("cx0") || 0), cx1 = Number(q.get("cx1") || 1);
+        const tw = Math.round((TH * W * (cx1 - cx0)) / (H * (cy1 - cy0)));
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        const cv = document.createElement("canvas");
+        cv.width = tw; cv.height = TH;
+        const cx = cv.getContext("2d");
+        if (cy0 > 0 || cy1 < 1 || cx0 > 0 || cx1 < 1) {
+          const VW = v.videoWidth, VH = v.videoHeight;
+          cx.drawImage(v, cx0 * VW, cy0 * VH, (cx1 - cx0) * VW, (cy1 - cy0) * VH, 0, 0, tw, TH);
+          // ruler: a line every 20 clip px, darker every 100, numbered in clip px from the top of the clip
+          const kk = TH / ((cy1 - cy0) * VH);
+          cx.font = "11px monospace";
+          for (let yy = Math.ceil((cy0 * VH) / 20) * 20; yy <= cy1 * VH; yy += 20) {
+            const py = (yy - cy0 * VH) * kk;
+            cx.fillStyle = yy % 100 === 0 ? "rgba(255,0,0,0.8)" : "rgba(255,0,0,0.3)";
+            cx.fillRect(0, py, tw, 1);
+            if (yy % 100 === 0) { cx.fillStyle = "red"; cx.fillText(String(yy), tw - 34, py - 2); }
+          }
+          cell.appendChild(cv);
+          const lab0 = document.createElement("span");
+          lab0.textContent = t.toFixed(2);
+          cell.appendChild(lab0);
+          grid.appendChild(cell);
+          info.textContent = log.join("\n");
+          return;
+        }
+        cx.drawImage(c, 0, 0, tw, TH);
+        const k = TH / H;
+        cx.fillStyle = "red"; cx.fillRect(0, sole * k, tw, 1);
+        cx.fillStyle = "green"; cx.fillRect(0, top * k, tw, 1);
+        cx.fillStyle = "orange"; cx.fillRect(tc * k, 0, 1, TH);
+        cell.appendChild(cv);
+        const lab = document.createElement("span");
+        lab.textContent = t.toFixed(2);
+        cell.appendChild(lab);
+        grid.appendChild(cell);
+        info.textContent = log.join("\n");
+      };
+      (async () => {
+        const blob = await (await fetch(SRC)).blob();
+        const v = document.createElement("video");
+        v.muted = true; v.playsInline = true; v.preload = "auto";
+        v.src = URL.createObjectURL(blob);
+        await new Promise((r) => v.addEventListener("loadeddata", r, { once: true }));
+        const VW = v.videoWidth, VH = v.videoHeight, D = v.duration;
+        const W = Math.round(VW / K), H = Math.round(VH / K);
+        log.push(`${clip}: ${VW}x${VH} ${D.toFixed(3)} s; at ${W}x${H}`);
+        const c = document.createElement("canvas");
+        c.width = W; c.height = H;
+        const x = c.getContext("2d", { willReadFrequently: true });
+        v.currentTime = from;
+        await new Promise((r) => v.addEventListener("seeked", r, { once: true }));
+        measure(v, from, c, x, W, H); lastT = from;
+        v.playbackRate = RATE;
+        const onFrame = (now, meta) => {
+          const t = meta.mediaTime;
+          if (t >= lastT + every - 0.02 && t <= to) { measure(v, t, c, x, W, H); lastT = t; }
+          if (t < to && !v.ended) v.requestVideoFrameCallback(onFrame);
+          else { v.pause(); info.textContent = log.join("\n") + "\ndone"; }
+        };
+        v.requestVideoFrameCallback(onFrame);
+        await v.play();
+      })().catch((e) => { info.textContent = log.join("\n") + "\nerror " + e; });
+    </script> </body> </html>

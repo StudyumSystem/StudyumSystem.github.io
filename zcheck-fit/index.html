@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en" data-astro-cid-ctoqadx7> <head><meta charset="utf-8"><meta name="robots" content="noindex"><style>body{margin:0;padding:6px;font:13px/1.25 monospace;background:#ddd}#row[data-astro-cid-ctoqadx7]{display:flex;gap:8px;align-items:flex-start}.cell[data-astro-cid-ctoqadx7]{display:flex;flex-direction:column}.box[data-astro-cid-ctoqadx7]{overflow:hidden;background:#fff;outline:1px solid #f0a}iframe[data-astro-cid-ctoqadx7]{border:0;transform-origin:0 0;display:block}pre[data-astro-cid-ctoqadx7]{margin:0 0 4px;white-space:pre-wrap;width:290px;min-height:92px}
+</style></head> <body data-astro-cid-ctoqadx7> <div id="row" data-astro-cid-ctoqadx7></div> <script>
+      const q = new URLSearchParams(location.search);
+      const game = q.get("g") || "tic-tac-toe";
+      const K = Number(q.get("k") || 0.7);
+      const act = q.get("act") || "";
+      const sizes = (q.get("s") || "375x667,390x844,430x932,390x664,375x548").split(",").map((s) => s.split("x").map(Number));
+      const row = document.getElementById("row");
+      let busy = 0;
+      // keep the network busy until all measures are in, so the checker waits for them
+      const ping = () => { if (busy > 0) fetch(`/robots.txt?w=${Math.random()}`, { cache: "no-store" }).finally(() => setTimeout(ping, 150)); };
+      for (const [w, h] of sizes) {
+        busy++;
+        const cell = document.createElement("div"); cell.className = "cell";
+        const pre = document.createElement("pre"); pre.textContent = `${w}x${h} …`;
+        const box = document.createElement("div"); box.className = "box"; box.style.width = w * K + "px"; box.style.height = h * K + "px";
+        const f = document.createElement("iframe"); f.width = w; f.height = h; f.style.transform = `scale(${K})`;
+        f.src = `/games/${game}`;
+        box.appendChild(f); cell.append(pre, box); row.appendChild(cell);
+        f.addEventListener("load", () => setTimeout(async () => {
+          const d = f.contentDocument, W = f.contentWindow;
+          const out = [`${w}x${h}`];
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          try {
+            if (act === "aom") {
+              for (let i = 0; i < 60 && d.querySelector("[data-aom]")?.dataset.aom !== "ready"; i++) await sleep(100);
+              out.push(`poses ${d.querySelector("[data-aom]")?.dataset.aom}`);
+              const btn = [...d.querySelectorAll("button")].find((b) => /Start/.test(b.textContent));
+              btn.click();
+              const cv = d.querySelector("canvas");
+              const dark = () => { const c = cv.getContext("2d"); const im = c.getImageData(0, 0, cv.width, Math.round(cv.height * 0.8)).data; let n = 0; for (let i = 3; i < im.length; i += 4 * 7) if (im[i] > 128) n++; return n; };
+              const seen = [];
+              const t0 = performance.now();
+              await new Promise((res) => { let k = 0; const fr = () => { seen.push(dark()); if (++k < 8) W.requestAnimationFrame(fr); else res(); }; fr(); });
+              out.push(`figure px, first 8 frames: ${seen.join(" ")}`);
+              if (q.get("wait")) await sleep(Number(q.get("wait")));
+            }
+            if (act === "ttt") {
+              const sq = d.querySelector('[aria-label="Empty square 5"]');
+              sq.click();
+              const ops = [];
+              for (let k = 0; k < 40; k++) {
+                await sleep(25);
+                const s = sq.querySelector("[role=img]");
+                const img = s?.querySelector("img");
+                const op = [...d.querySelectorAll("[role=grid] button")].map((b) => W.getComputedStyle(b).opacity).filter((o) => o !== "1").length;
+                ops.push(`${s ? (img.complete && img.naturalWidth ? "P" : "_") : "-"}${op}`);
+              }
+              out.push(`X shown (P=poster in) / pale squares, every 25 ms: ${ops.join(" ")}`);
+            }
+            const panel = d.querySelector("[role=dialog] [tabindex='-1']");
+            const se = d.scrollingElement;
+            out.push(`page ${se.scrollHeight}/${W.innerHeight} panel ${panel.scrollHeight}/${panel.clientHeight} ${panel.scrollHeight > panel.clientHeight + 1 ? "SCROLLS" : "fits"}`);
+          } catch (e) { out.push(String(e)); }
+          pre.textContent = out.join("\n");
+          busy--;
+        }, act ? 600 : 1500));
+      }
+      ping();
+    </script> </body> </html>
